@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OPERATION HARMONI - Sejarah Tingkatan 5</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050b14;
+            font-family: 'Rajdhani', sans-serif;
+            color: white;
+            user-select: none;
+        }
+
+        h1, h2, .orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Video as background, object-cover ensures it fills screen, scaleX(-1) mirrors it */
+        #webcam-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: 1;
+            opacity: 0.6; /* Slightly dim video to make game elements pop */
+            filter: grayscale(30%) sepia(20%) hue-rotate(180deg); /* Sci-fi tint */
+        }
+
+        /* Canvas for rendering game elements */
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through if using mouse fallback on document */
+        }
+
+        /* UI Overlays */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(5, 11, 20, 0.85);
+            backdrop-filter: blur(5px);
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: rgba(16, 30, 60, 0.7);
+            border: 2px solid #00f3ff;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.5), inset 0 0 20px rgba(0, 243, 255, 0.2);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            max-width: 90%;
+            width: 600px;
+        }
+
+        .btn-sci-fi {
+            background: linear-gradient(45deg, #0055ff, #00f3ff);
+            border: none;
+            color: white;
+            padding: 12px 32px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron', sans-serif;
+            border-radius: 8px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 10px #00f3ff;
+            transition: all 0.2s;
+            margin-top: 1rem;
+        }
+
+        .btn-sci-fi:hover {
+            box-shadow: 0 0 20px #00f3ff, 0 0 40px #0055ff;
+            transform: scale(1.05);
+        }
+
+        .btn-sci-fi:active {
+            transform: scale(0.95);
+        }
+
+        /* In-game HUD */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            z-index: 15;
+            pointer-events: none;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+        }
+
+        #question-display {
+            background: rgba(0, 20, 40, 0.8);
+            border-left: 4px solid #00f3ff;
+            padding: 1rem;
+            border-radius: 0 8px 8px 0;
+            max-width: 50%;
+            font-size: 1.3rem;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        .stats {
+            font-size: 1.5rem;
+            font-family: 'Orbitron', sans-serif;
+            text-shadow: 0 0 5px #00f3ff;
+            text-align: right;
+        }
+
+        #tracking-status {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.9rem;
+            padding: 5px 10px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.5);
+            z-index: 15;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .dot-red { background-color: #ff3333; box-shadow: 0 0 5px #ff3333; }
+        .dot-green { background-color: #33ff33; box-shadow: 0 0 5px #33ff33; }
+
+        #fallback-hint {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 0.9rem;
+            color: #aaa;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* AR Target Reticle Animation */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Camera Feed -->
+    <video id="webcam-video" autoplay playsinline></video>
+    
+    <!-- Game Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- In-Game HUD -->
+    <div id="hud" class="hidden">
+        <div id="question-display">Sedia untuk soalan...</div>
+        <div class="stats">
+            <div>SKOR: <span id="score-val" class="text-cyan-400">0</span></div>
+            <div>NYAWA: <span id="lives-val" class="text-red-400">❤️❤️❤️</span></div>
+            <div class="text-sm text-yellow-300 mt-1">KOMBO: <span id="combo-val">x1</span></div>
+            <div class="text-sm text-gray-300">TAHAP: <span id="level-val">1</span></div>
+        </div>
+    </div>
+    <div id="tracking-status" class="hidden"><span class="status-dot dot-red" id="status-indicator"></span><span id="status-text">Kamera Dicari...</span></div>
+    <div id="fallback-hint" class="hidden">Gunakan Tetikus (Klik) jika kamera gagal.</div>
+
+    <!-- Main Menu -->
+    <div id="main-menu" class="ui-layer">
+        <div class="glass-panel">
+            <h1 class="text-5xl font-bold mb-2 text-cyan-400 drop-shadow-[0_0_10px_rgba(0,243,255,0.8)]">OPERATION HARMONI</h1>
+            <h2 class="text-xl text-cyan-200 mb-6">Misi Sejarah Tingkatan 5: Bab 7</h2>
+            <p class="mb-4 text-gray-200">
+                Pertahankan ruang udara negara daripada Asteroid Kejahilan!<br>
+                Gunakan <b class="text-yellow-400">Kamera Web</b> untuk membidik.<br>
+                Halakan <b>jari telunjuk</b>, dan <b>cubit (pinch)</b> jari telunjuk & ibu jari untuk menembak jawapan yang betul.
+            </p>
+            <div class="flex justify-center gap-4 text-4xl mb-6">
+                👆 🤏 💥
+            </div>
+            <button id="btn-start" class="btn-sci-fi">Mula Misi & Aktifkan Kamera</button>
+        </div>
+    </div>
+
+    <!-- Loading / Calibration -->
+    <div id="loading-screen" class="ui-layer hidden">
+        <div class="glass-panel">
+            <h2 class="text-3xl text-cyan-400 mb-4 orbitron">Memuatkan Sistem AR...</h2>
+            <div class="w-full bg-gray-800 rounded-full h-4 mb-4 overflow-hidden border border-cyan-500">
+                <div id="loading-bar" class="bg-cyan-400 h-4 w-0 transition-all duration-300 shadow-[0_0_10px_#00f3ff]"></div>
+            </div>
+            <p id="loading-text" class="text-gray-300">Menginisialisasi MediaPipe Vision...</p>
+        </div>
+    </div>
+
+    <!-- Game Over -->
+    <div id="game-over-screen" class="ui-layer hidden">
+        <div class="glass-panel border-red-500 shadow-[0_0_15px_rgba(255,0,0,0.5)]">
+            <h1 class="text-5xl font-bold mb-4 text-red-500 orbitron drop-shadow-[0_0_10px_rgba(255,0,0,0.8)]">MISI GAGAL</h1>
+            <p class="text-xl mb-2">Skor Akhir Anda:</p>
+            <p class="text-6xl font-bold text-cyan-400 mb-6 orbitron" id="final-score">0</p>
+            <button id="btn-restart" class="btn-sci-fi bg-red-600 shadow-[0_0_10px_red] hover:shadow-[0_0_20px_red]">Cuba Lagi</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * SEJARAH TINGKATAN 5 BAB 7 DATA
+ * Summarized answers for playability as moving targets.
+ */
+const sejarahData = [
+    { q: "Apakah yang dimaksudkan dengan perpaduan kaum?", a: "Rakyat pelbagai etnik hidup aman dan bersatu", w: ["Pemisahan petempatan dan ekonomi mengikut kaum", "Hanya satu kaum menguasai ekonomi negara"] },
+    { q: "Apakah definisi integrasi nasional?", a: "Proses merapatkan hubungan antara negeri & wilayah", w: ["Menubuhkan sekolah vernakular untuk semua", "Mengasingkan pentadbiran mengikut wilayah"] },
+    { q: "Bagaimanakah dasar British menjejaskan hubungan kaum?", a: "Berlaku pemisahan petempatan & kegiatan ekonomi", w: ["Menyatukan semua kaum dalam satu sistem", "Mewajibkan penggunaan bahasa Melayu"] },
+    { q: "Peranan Jabatan Perpaduan Negara (MAGERAN)?", a: "Mendraf ideologi Rukun Negara", w: ["Menubuhkan parti politik berbilang kaum", "Menguruskan hal ehwal kewangan negara"] },
+    { q: "Usaha ekonomi kerajaan untuk integrasi nasional?", a: "Pembangunan tanah spt FELDA basmi kemiskinan", w: ["Menutup kawasan luar bandar", "Mengehadkan peluang pekerjaan kepada bumiputera"] },
+    { q: "Matlamat utama Dasar Pendidikan Kebangsaan?", a: "Menyatupadukan rakyat & sedia tenaga mahir", w: ["Menyediakan pendidikan tinggi untuk golongan elit", "Menghapuskan sekolah agama"] },
+    { q: "Cadangan Laporan Rahman Talib 1960?", a: "BM bahasa pengantar & tekankan subjek Sejarah", w: ["Guna bahasa Inggeris sepenuhnya", "Memansuhkan peperiksaan awam"] },
+    { q: "Cadangan utama Kajian Aminuddin Baki 1964?", a: "Sistem aneka jurusan & kursus kemahiran", w: ["Pendidikan percuma di universiti", "Pemansuhan sekolah rendah"] },
+    { q: "Hasil Laporan Jawatankuasa Kabinet 1979?", a: "Pengenalan kurikulum KBSR (1983) & KBSM (1989)", w: ["Penubuhan Universiti Malaya", "Pengenalan subjek Sains Komputer"] },
+    { q: "Fokus Falsafah Pendidikan Kebangsaan (FPK)?", a: "Bentuk pelajar seimbang (Jasmani, Emosi, Rohani, Intelek)", w: ["Melahirkan atlet sukan antarabangsa", "Mencapai perpaduan politik semata-mata"] },
+    { q: "Peranan Akta Pendidikan 1996 terhadap BM?", a: "BM bahasa pengantar & subjek wajib semua sekolah", w: ["Memansuhkan penggunaan bahasa vernakular", "Menjadikan BM bahasa antarabangsa"] },
+    { q: "Peranan Akta Bahasa Kebangsaan (Akta 32)?", a: "Memartabatkan BM sbg bahasa rasmi pentadbiran", w: ["Mewajibkan semua peniaga guna BM", "Mengharamkan bahasa lain dalam negara"] },
+    { q: "Tujuan Universiti Kebangsaan Malaysia (UKM) ditubuhkan?", a: "Pusat keilmuan BM peringkat pengajian tinggi", w: ["Untuk melatih tentera darat", "Pusat penyelidikan angkasa lepas"] },
+    { q: "Bilakah Dewan Bahasa dan Pustaka (DBP) ditubuhkan?", a: "22 Jun 1956 di Johor Bahru", w: ["31 Ogos 1957 di Kuala Lumpur", "16 September 1963 di Sabah"] },
+    { q: "Tujuan slogan 'Bahasa Jiwa Bangsa' (1960)?", a: "Kukuh perpaduan menerusi bahasa kebangsaan", w: ["Menggalakkan penggunaan bahasa Inggeris", "Kempen membasmi buta huruf"] },
+    { q: "Sebab Dasar Kebudayaan Kebangsaan dibentuk?", a: "Wujud perpaduan menerusi kesenian & kebudayaan", w: ["Untuk menarik pelancong asing sahaja", "Menghapuskan budaya kaum minoriti"] },
+    { q: "Prinsip utama Dasar Kebudayaan Kebangsaan?", a: "Teras budaya Melayu & Islam unsur penting", w: ["Berteraskan budaya Barat sepenuhnya", "Hanya satu budaya dibenarkan di Malaysia"] },
+    { q: "Dasar sukan untuk perpaduan dalam pendidikan?", a: "1 Murid 1 Sukan & RIMUP", w: ["Dasar Penswastaan Sukan Negara", "Program Latihan Khidmat Negara (PLKN)"] },
+    { q: "Tujuan Sukan Malaysia (SUKMA)?", a: "Eratkan integrasi negeri & hubungan pelbagai kaum", w: ["Memilih wakil ke Sukan Olimpik", "Mempromosikan sukan tradisional sahaja"] },
+    { q: "Slogan 'Malaysia Boleh' mula digunakan bila?", a: "Piala Thomas & Uber tahun 1992", w: ["Sukan Komanwel 1998", "Piala Dunia FIFA 2002"] },
+    { q: "Bilakah Rukun Negara diisytiharkan?", a: "31 Ogos 1970 (Ulang tahun merdeka ke-13)", w: ["16 September 1963", "13 Mei 1969"] },
+    { q: "Prinsip pertama Rukun Negara?", a: "Kepercayaan kepada Tuhan", w: ["Keluhuran Perlembagaan", "Kesetiaan kepada Raja dan Negara"] },
+    { q: "Matlamat Rukun Negara?", a: "Cipta masyarakat bersatu padu & demokratik", w: ["Mewujudkan negara komunis", "Menyekat kebebasan bersuara mutlak"] },
+    { q: "Bagaimana lahirkan masyarakat progresif (Rukun Negara)?", a: "Kuasai kemajuan sains & teknologi moden", w: ["Kembali kepada sistem pertanian tradisional", "Mengasingkan diri dari dunia luar"] },
+    { q: "Kepentingan penghayatan Rukun Negara?", a: "Panduan hidup jamin kestabilan & perpaduan", w: ["Untuk lulus peperiksaan Sejarah sahaja", "Syarat untuk mendapat kewarganegaraan"] }
+];
+
+// --- Audio System (Tone.js) ---
+const AudioSys = {
+    synth: null,
+    noise: null,
+    isMuted: false,
+    
+    init: async function() {
+        await Tone.start();
+        this.synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "sawtooth" },
+            envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 1 }
+        }).toDestination();
+        
+        this.noise = new Tone.NoiseSynth({
+            noise: { type: "white" },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0 }
+        }).toDestination();
+        
+        this.synth.volume.value = -10;
+        this.noise.volume.value = -15;
+    },
+    
+    playShoot: function() {
+        if(this.isMuted) return;
+        this.synth.triggerAttackRelease("C5", "32n");
+    },
+    
+    playCorrect: function() {
+        if(this.isMuted) return;
+        const now = Tone.now();
+        this.synth.triggerAttackRelease("C5", "8n", now);
+        this.synth.triggerAttackRelease("E5", "8n", now + 0.1);
+        this.synth.triggerAttackRelease("G5", "4n", now + 0.2);
+    },
+    
+    playWrong: function() {
+        if(this.isMuted) return;
+        this.noise.triggerAttackRelease("16n");
+        this.synth.triggerAttackRelease("D2", "8n");
+    },
+    
+    playGameOver: function() {
+        if(this.isMuted) return;
+        const now = Tone.now();
+        this.synth.triggerAttackRelease("G3", "4n", now);
+        this.synth.triggerAttackRelease("Eb3", "4n", now + 0.3);
+        this.synth.triggerAttackRelease("C3", "1n", now + 0.6);
+    }
+};
+
+// --- DOM Elements ---
+const els = {
+    menu: document.getElementById('main-menu'),
+    loading: document.getElementById('loading-screen'),
+    game: document.getElementById('game-canvas'),
+    gameOver: document.getElementById('game-over-screen'),
+    hud: document.getElementById('hud'),
+    video: document.getElementById('webcam-video'),
+    btnStart: document.getElementById('btn-start'),
+    btnRestart: document.getElementById('btn-restart'),
+    progress: document.getElementById('loading-bar'),
+    statusText: document.getElementById('status-text'),
+    statusDot: document.getElementById('status-indicator'),
+    trackingHUD: document.getElementById('tracking-status'),
+    fallbackHint: document.getElementById('fallback-hint'),
+    qDisplay: document.getElementById('question-display'),
+    valScore: document.getElementById('score-val'),
+    valLives: document.getElementById('lives-val'),
+    valCombo: document.getElementById('combo-val'),
+    valLevel: document.getElementById('level-val'),
+    finalScore: document.getElementById('final-score')
+};
+
+const ctx = els.game.getContext('2d');
+
+// --- Game State & Constants ---
+let state = {
+    isRunning: false,
+    score: 0,
+    lives: 3,
+    combo: 0,
+    level: 1,
+    currentQuestion: null,
+    entities: [], // asteroids/targets
+    particles: [],
+    pointer: { x: window.innerWidth/2, y: window.innerHeight/2, isPinching: false, cooldown: 0 },
+    lastFrameTime: 0,
+    spawnTimer: 0,
+    baseSpeed: 1.5,
+    cameraActive: false
+};
+
+const CFG = {
+    pinchThreshold: 0.05, // Distance between thumb and index normalized
+    cooldownMax: 0.5, // seconds
+    colors: {
+        correct: '#33ff33',
+        wrong: '#ff3333',
+        pointer: '#00f3ff',
+        particle: '#ffffff'
+    }
+};
+
+// --- Utils ---
+const lerp = (start, end, amt) => (1 - amt) * start + amt * end;
+const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+const rand = (min, max) => Math.random() * (max - min) + min;
+const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
+
+// Wrap text on canvas
+function wrapText(context, text, x, y, maxWidth, lineHeight) {
+    let words = text.split(' ');
+    let line = '';
+    let currentY = y;
+    for(let n = 0; n < words.length; n++) {
+        let testLine = line + words[n] + ' ';
+        let metrics = context.measureText(testLine);
+        let testWidth = metrics.width;
+        if (testWidth > maxWidth && n > 0) {
+            context.fillText(line, x, currentY);
+            line = words[n] + ' ';
+            currentY += lineHeight;
+        } else {
+            line = testLine;
+        }
+    }
+    context.fillText(line, x, currentY);
+    return currentY + lineHeight;
+}
+
+// --- MediaPipe Hand Tracking Setup ---
+let handLandmarker = null;
+let webcamStream = null;
+
+async function setupMediaPipe() {
+    updateLoading(20, "Memuat turun model AI...");
+    try {
+        const { FilesetResolver, HandLandmarker } = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3");
+        const visionParams = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
+        
+        updateLoading(50, "Menginisialisasi Hand Landmarker...");
+        handLandmarker = await HandLandmarker.createFromOptions(visionParams, {
+            baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            numHands: 1
+        });
+        
+        updateLoading(80, "Memohon akses kamera...");
+        const constraints = { video: { facingMode: "user", width: 640, height: 480 } };
+        webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+        els.video.srcObject = webcamStream;
+        
+        return new Promise((resolve) => {
+            els.video.onloadeddata = () => {
+                state.cameraActive = true;
+                els.video.play();
+                updateLoading(100, "Sistem Sedia!");
+                setTimeout(resolve, 500);
+            };
+        });
+    } catch (error) {
+        console.error("Camera/MediaPipe Error:", error);
+        alert("Ralat mengaktifkan kamera. Bermain menggunakan tetikus sebagai sandaran.");
+        els.fallbackHint.classList.remove('hidden');
+        return Promise.resolve(); // Continue anyway for fallback
+    }
+}
+
+function updateLoading(percent, text) {
+    els.progress.style.width = percent + '%';
+    document.getElementById('loading-text').innerText = text;
+}
+
+// Map normalized coordinates from video frame to object-cover canvas
+function mapCoordinates(normX, normY) {
+    if (!state.cameraActive) return {x: normX * els.game.width, y: normY * els.game.height};
+    
+    // MediaPipe gives coordinates relative to original video aspect ratio
+    const vw = els.video.videoWidth;
+    const vh = els.video.videoHeight;
+    const cw = els.game.width;
+    const ch = els.game.height;
+
+    // Simulate object-fit: cover math
+    const scale = Math.max(cw / vw, ch / vh);
+    const scaledW = vw * scale;
+    const scaledH = vh * scale;
+    const offsetX = (cw - scaledW) / 2;
+    const offsetY = (ch - scaledH) / 2;
+
+    // Apply mirror mode (scaleX(-1) in CSS means we invert X)
+    const mirroredX = 1.0 - normX;
+
+    const canvasX = (mirroredX * scaledW) + offsetX;
+    const canvasY = (normY * scaledH) + offsetY;
+
+    return { x: canvasX, y: canvasY };
+}
+
+// --- Game Logic ---
+
+class TargetEntity {
+    constructor(x, y, text, isCorrect) {
+        this.x = x;
+        this.y = y;
+        this.radius = 60; // Hitbox radius
+        this.text = text;
+        this.isCorrect = isCorrect;
+        this.speed = state.baseSpeed + (state.level * 0.2) + rand(-0.5, 0.5);
+        this.active = true;
+        this.rotation = 0;
+        this.rotSpeed = rand(-0.02, 0.02);
+    }
+
+    update(dt) {
+        this.y += this.speed * (dt * 60); // frame-rate independent movement approx
+        this.rotation += this.rotSpeed * (dt * 60);
+        if (this.y > els.game.height + this.radius) {
+            this.active = false;
+            if (this.isCorrect) {
+                loseLife(); // Punish for missing correct answer
+            }
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Draw Asteroid/Base
+        ctx.rotate(this.rotation);
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(20, 40, 80, 0.8)';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = this.isHovered() ? CFG.colors.pointer : 'rgba(0, 243, 255, 0.4)';
+        ctx.stroke();
+
+        // Icon
+        ctx.font = '30px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('☄️', 0, -20);
+        ctx.restore(); // Undo rotation for text
+
+        // Text (Answers)
+        ctx.font = '14px Rajdhani';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 4;
+        
+        // Simple wrapping for short answers
+        wrapText(ctx, this.text, this.x, this.y + 10, this.radius * 2.5, 16);
+        
+        ctx.shadowBlur = 0;
+    }
+    
+    isHovered() {
+        return dist(this.x, this.y, state.pointer.x, state.pointer.y) < this.radius;
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = rand(-5, 5);
+        this.vy = rand(-5, 5);
+        this.life = 1.0;
+        this.color = color;
+        this.size = rand(2, 6);
+    }
+    update(dt) {
+        this.x += this.vx * (dt * 60);
+        this.y += this.vy * (dt * 60);
+        this.life -= 0.05 * (dt * 60);
+    }
+    draw(ctx) {
+        ctx.globalAlpha = Math.max(0, this.life);
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+function spawnQuestion() {
+    state.entities = [];
+    
+    // Pick random Q
+    const qData = sejarahData[randInt(0, sejarahData.length - 1)];
+    state.currentQuestion = qData;
+    els.qDisplay.innerText = qData.q;
+    
+    // Prepare options (1 correct, 2 wrong)
+    let options = [
+        { text: qData.a, correct: true }
+    ];
+    
+    // Get wrong options
+    let pool = [];
+    if(qData.w && qData.w.length >= 2) {
+        pool = [...qData.w];
+    } else {
+        // Grab answers from other random questions if not enough explicit wrong answers
+        while(pool.length < 2) {
+            let rndQ = sejarahData[randInt(0, sejarahData.length - 1)];
+            if(rndQ.a !== qData.a && !pool.includes(rndQ.a)) pool.push(rndQ.a);
+        }
+    }
+    
+    // Shuffle pool and take 2
+    pool.sort(() => Math.random() - 0.5);
+    options.push({ text: pool[0], correct: false });
+    options.push({ text: pool[1], correct: false });
+    
+    // Shuffle final options
+    options.sort(() => Math.random() - 0.5);
+    
+    // Spawn targets across screen width
+    const cw = els.game.width;
+    const spacing = cw / 4;
+    
+    for(let i=0; i<3; i++) {
+        let tx = spacing * (i + 1);
+        let ty = -100 - rand(0, 50); // Spawn above screen
+        state.entities.push(new TargetEntity(tx, ty, options[i].text, options[i].correct));
+    }
+}
+
+function createExplosion(x, y, color) {
+    for(let i=0; i<20; i++) {
+        state.particles.push(new Particle(x, y, color));
+    }
+}
+
+function handleHit(target) {
+    if (state.pointer.cooldown > 0) return;
+    
+    AudioSys.playShoot();
+    state.pointer.cooldown = CFG.cooldownMax;
+    createExplosion(target.x, target.y, CFG.colors.particle);
+    target.active = false;
+    
+    if (target.isCorrect) {
+        AudioSys.playCorrect();
+        createExplosion(target.x, target.y, CFG.colors.correct);
+        state.combo++;
+        let pts = 100 * state.combo * state.level;
+        state.score += pts;
+        updateHUD();
+        
+        // Remove other entities
+        state.entities = [];
+        
+        // Level up mechanic
+        if (state.score > state.level * 2000) {
+            state.level++;
+            state.baseSpeed += 0.2;
+            updateHUD();
+        }
+        
+        // Spawn next after small delay
+        setTimeout(() => { if(state.isRunning) spawnQuestion(); }, 1000);
+        
+    } else {
+        // Wrong answer
+        AudioSys.playWrong();
+        createExplosion(target.x, target.y, CFG.colors.wrong);
+        state.combo = 0;
+        loseLife();
+    }
+}
+
+function loseLife() {
+    state.lives--;
+    updateHUD();
+    
+    // Visual flash
+    els.game.style.backgroundColor = 'rgba(255,0,0,0.3)';
+    setTimeout(() => { els.game.style.backgroundColor = 'transparent'; }, 100);
+    
+    if (state.lives <= 0) {
+        endGame();
+    } else {
+        // Clear screen and spawn new question if missed correct one
+        if(!state.entities.find(e => e.isCorrect && e.active)) {
+             state.entities = [];
+             setTimeout(() => { if(state.isRunning) spawnQuestion(); }, 1000);
+        }
+    }
+}
+
+function updateHUD() {
+    els.valScore.innerText = state.score;
+    els.valLives.innerText = '❤️'.repeat(state.lives);
+    els.valCombo.innerText = `x${state.combo}`;
+    els.valLevel.innerText = state.level;
+}
+
+// --- Main Loop ---
+function gameLoop(timestamp) {
+    if (!state.isRunning) return;
+    
+    const dt = (timestamp - state.lastFrameTime) / 1000;
+    state.lastFrameTime = timestamp;
+    
+    // Resize canvas if needed
+    if (els.game.width !== window.innerWidth || els.game.height !== window.innerHeight) {
+        els.game.width = window.innerWidth;
+        els.game.height = window.innerHeight;
+    }
+    
+    ctx.clearRect(0, 0, els.game.width, els.game.height);
+    
+    // Process MediaPipe Hand Tracking
+    if (handLandmarker && state.cameraActive && els.video.readyState >= 2) {
+        const results = handLandmarker.detectForVideo(els.video, performance.now());
+        
+        if (results.landmarks && results.landmarks.length > 0) {
+            els.statusDot.className = "status-dot dot-green";
+            els.statusText.innerText = "Jari Dikesan";
+            
+            const lm = results.landmarks[0];
+            const indexTip = lm[8];
+            const thumbTip = lm[4];
+            
+            // Map coords
+            const targetPos = mapCoordinates(indexTip.x, indexTip.y);
+            
+            // LERP for smoothing
+            state.pointer.x = lerp(state.pointer.x, targetPos.x, 0.4);
+            state.pointer.y = lerp(state.pointer.y, targetPos.y, 0.4);
+            
+            // Check Pinch
+            const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+            state.pointer.isPinching = pinchDist < CFG.pinchThreshold;
+            
+        } else {
+            els.statusDot.className = "status-dot dot-red";
+            els.statusText.innerText = "Tangan Hilang";
+            state.pointer.isPinching = false;
+        }
+    }
+
+    // Cooldown logic
+    if (state.pointer.cooldown > 0) {
+        state.pointer.cooldown -= dt;
+    }
+
+    // Update & Draw Entities
+    for (let i = state.entities.length - 1; i >= 0; i--) {
+        let e = state.entities[i];
+        if (!e) break; // Prevent undefined errors if array was cleared mid-loop
+        
+        if (e.active) {
+            e.update(dt);
+            
+            // Safety check: array might have been cleared during e.update (e.g., if missed and lost a life)
+            if (state.entities.length === 0) break;
+            
+            e.draw(ctx);
+            
+            // Check Collision / Interaction
+            if (e.isHovered() && state.pointer.isPinching && state.pointer.cooldown <= 0) {
+                handleHit(e);
+                break; // Stop checking further once hit to prevent errors
+            }
+        } else {
+            state.entities.splice(i, 1);
+        }
+    }
+    
+    // Particles
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+        let p = state.particles[i];
+        if (p.life > 0) {
+            p.update(dt);
+            p.draw(ctx);
+        } else {
+            state.particles.splice(i, 1);
+        }
+    }
+    
+    // Draw Pointer (AR Reticle)
+    drawPointer(ctx);
+
+    requestAnimationFrame(gameLoop);
+}
+
+function drawPointer(ctx) {
+    ctx.beginPath();
+    ctx.arc(state.pointer.x, state.pointer.y, 15, 0, Math.PI * 2);
+    
+    if (state.pointer.cooldown > 0) {
+        ctx.strokeStyle = 'gray';
+        ctx.setLineDash([5, 5]);
+    } else if (state.pointer.isPinching) {
+        ctx.strokeStyle = CFG.colors.correct;
+        ctx.fillStyle = 'rgba(51, 255, 51, 0.5)';
+        ctx.fill();
+        ctx.setLineDash([]);
+    } else {
+        ctx.strokeStyle = CFG.colors.pointer;
+        ctx.setLineDash([]);
+    }
+    
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset
+    
+    // Inner dot
+    ctx.beginPath();
+    ctx.arc(state.pointer.x, state.pointer.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = CFG.colors.pointer;
+    ctx.fill();
+}
+
+// --- Flow Control ---
+
+async function startGame() {
+    await AudioSys.init(); // Must be called after user interaction
+    els.menu.classList.add('hidden');
+    els.loading.classList.remove('hidden');
+    
+    // Fallback resize
+    els.game.width = window.innerWidth;
+    els.game.height = window.innerHeight;
+
+    await setupMediaPipe();
+    
+    els.loading.classList.add('hidden');
+    els.hud.classList.remove('hidden');
+    els.trackingHUD.classList.remove('hidden');
+    
+    state.isRunning = true;
+    state.score = 0;
+    state.lives = 3;
+    state.combo = 0;
+    state.level = 1;
+    state.baseSpeed = 1.5;
+    state.entities = [];
+    state.particles = [];
+    state.lastFrameTime = performance.now();
+    updateHUD();
+    
+    spawnQuestion();
+    requestAnimationFrame(gameLoop);
+}
+
+function endGame() {
+    state.isRunning = false;
+    AudioSys.playGameOver();
+    els.hud.classList.add('hidden');
+    els.trackingHUD.classList.add('hidden');
+    els.gameOver.classList.remove('hidden');
+    els.finalScore.innerText = state.score;
+}
+
+// --- Event Listeners ---
+els.btnStart.addEventListener('click', startGame);
+els.btnRestart.addEventListener('click', () => {
+    els.gameOver.classList.add('hidden');
+    els.hud.classList.remove('hidden');
+    els.trackingHUD.classList.remove('hidden');
+    state.isRunning = true;
+    state.score = 0;
+    state.lives = 3;
+    state.combo = 0;
+    state.level = 1;
+    state.baseSpeed = 1.5;
+    state.entities = [];
+    updateHUD();
+    state.lastFrameTime = performance.now();
+    spawnQuestion();
+    requestAnimationFrame(gameLoop);
+});
+
+// Fallback Mouse Controls
+document.addEventListener('mousemove', (e) => {
+    if (!state.cameraActive && state.isRunning) {
+        state.pointer.x = e.clientX;
+        state.pointer.y = e.clientY;
+    }
+});
+document.addEventListener('mousedown', (e) => {
+    if (!state.cameraActive && state.isRunning) {
+        state.pointer.isPinching = true;
+        
+        // Manual hit check for mouse since update loop might miss quick clicks
+        for(let t of state.entities) {
+            if(t.active && t.isHovered() && state.pointer.cooldown <= 0) {
+                handleHit(t);
+                break; // Only hit one
+            }
+        }
+    }
+});
+document.addEventListener('mouseup', () => {
+    if (!state.cameraActive) state.pointer.isPinching = false;
+});
+
+// Initial Setup
+els.game.width = window.innerWidth;
+els.game.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+    els.game.width = window.innerWidth;
+    els.game.height = window.innerHeight;
+});
+
+</script>
+</body>
+</html>
